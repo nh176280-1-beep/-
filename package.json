@@ -1,0 +1,24 @@
+{
+  "name": "daegu-meat-prices",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --use-env-proxy src/server.js",
+    "dev": "node --env-file-if-exists=.env --use-env-proxy --watch src/server.js",
+    "test": "node --test",
+    "test:browser": "playwright test",
+    "preview:build": "node scripts/build-preview.mjs",
+    "check:sources": "node --env-file-if-exists=.env --use-env-proxy scripts/check-sources.mjs"
+  },
+  "dependencies": {
+    "cheerio": "1.1.2",
+    "robots-parser": "3.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}

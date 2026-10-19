@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#173e35">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="한눈에 시세">
+  <meta name="description" content="대구축협 육가공공장 직원 전용 가격 조회">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/style.css">
+  <title>한눈에 시세 · 대구축협 육가공공장</title>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div id="loading" class="boot">한눈에 시세를 불러오는 중…</div>
+  <main id="login-view" class="login-layout" hidden>
+    <section class="login-story">
+      <a class="brand light" href="/"><img src="/icon.svg" alt="" width="42" height="42"><span>한눈에 시세<small>대구축협 육가공공장</small></span></a>
+      <div class="story-copy"><p class="eyebrow">OUR TEAM, CONNECTED</p><h1>현장 밖에서도,<br>가격은 한눈에.</h1><p>필요한 품목의 가격과 원본 정보를<br>휴대폰에서 간편하게 확인하세요.</p></div>
+      <div class="story-art" aria-hidden="true"><span class="orbit orbit-one"></span><span class="orbit orbit-two"></span><span class="art-label">PRICE<br><strong>CHECK.</strong></span><span class="art-dot"></span></div>
+      <p class="story-footer">우리 팀을 위한 작은 업무 도구</p>
+    </section>
+    <section class="login-panel">
+      <div class="login-box"><span class="pill">직원 전용 서비스</span><h2>반갑습니다.</h2><p class="muted">직원 계정으로 로그인해 주세요.</p>
+        <form id="login-form">
+          <label for="username">직원 아이디</label><input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="아이디를 입력하세요" required maxlength="40">
+          <label for="password">비밀번호</label><input id="password" name="password" type="password" autocomplete="current-password" placeholder="비밀번호를 입력하세요" required maxlength="128">
+          <p id="login-error" class="form-error" role="alert"></p><button class="button primary wide" type="submit">로그인 <span aria-hidden="true">↗</span></button>
+        </form><p class="login-help">계정이 없거나 비밀번호를 잊으셨나요?<br>공장 관리자에게 문의해 주세요.</p>
+      </div><p class="login-footnote">DAEGU LIVESTOCK COOPERATIVE</p>
+    </section>
+  </main>
+
+  <div id="app-view" hidden>
+    <header class="topbar"><div class="topbar-inner"><a class="brand" href="/"><img src="/icon.svg" alt="" width="40" height="40"><span>한눈에 시세<small>대구축협 육가공공장</small></span></a><div class="account"><span id="user-name"></span><button id="logout" class="text-button">로그아웃</button></div></div></header>
+    <div class="workspace">
+      <nav class="sidebar" aria-label="주 메뉴"><p class="nav-label">WORKSPACE</p><button class="nav-item active" data-view="prices"><span aria-hidden="true">▦</span> 가격 조회</button><button class="nav-item" data-view="favorites"><span aria-hidden="true">☆</span> 관심 품목 <span id="favorite-count" class="count">0</span></button><button class="nav-item admin-only" data-view="settings" hidden><span aria-hidden="true">⚙</span> 관리 설정</button><div class="sidebar-note"><span class="live-dot"></span>가격 확인 안내<p>판매 단위와 확인 시각을<br>함께 확인해 주세요.</p></div></nav>
+      <main class="content">
+        <section id="price-view">
+          <div class="page-heading"><div><p class="eyebrow dark">SMART PRICE BOARD</p><h1 id="page-title">오늘의 가격, 한눈에<span class="heading-dot">.</span></h1><p class="muted" id="page-description">두 사이트의 가격 정보를 한곳에서 확인하세요.</p></div><button id="reload" class="button secondary"><span aria-hidden="true">↻</span> 조회 새로고침</button></div>
+          <div class="overview"><div class="overview-intro"><span class="overview-kicker">함께 확인하는 가격 정보</span><h2>현장에서는 더 빠르게,<br>확인할 때는 더 정확하게.</h2><p>원본에 표시된 가격과 단위를 그대로 확인하세요.</p></div><div class="overview-stats"><div><span>연결 대상 사이트</span><strong>2<small>곳</small></strong></div><div><span>조회 가능한 품목</span><strong id="total-items">—</strong></div><div><span>자동 확인 주기</span><strong>30<small>분</small></strong></div></div></div>
+          <div id="source-status" class="source-status" aria-label="사이트별 수집 상태"></div>
+          <div id="connection-warning" class="notice" role="status" hidden></div>
+          <section class="catalog" aria-label="가격 목록">
+            <div class="catalog-toolbar"><div class="tabs" role="group" aria-label="사이트 필터"><button class="tab selected" data-source="all" aria-pressed="true">전체</button><button class="tab" data-source="ekcm" aria-pressed="false">금천미트</button><button class="tab" data-source="ilpoom" aria-pressed="false">일품한우</button></div><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" aria-label="품목 또는 등급 검색" placeholder="어떤 품목을 찾으세요?"></label></div>
+            <div class="list-heading"><p>가격 목록 <strong id="result-count">0</strong></p><label class="sort-label">정렬 <select id="sort"><option value="name">품목명순</option><option value="recent">최근 확인순</option></select></label></div>
+            <div id="price-grid" class="price-grid" aria-live="polite"></div>
+            <div id="empty-state" class="empty-state"><div class="empty-symbol" aria-hidden="true">≋</div><h3 id="empty-title">가격 정보를 준비하고 있습니다</h3><p id="empty-description">원본 사이트에서 가격이 확인되면 이곳에 표시됩니다.<br>확인되지 않은 가격은 표시하지 않습니다.</p><div class="empty-links"><a href="https://www.ekcm.co.kr/" target="_blank" rel="noopener noreferrer">금천미트 원본 보기 ↗</a><a href="https://www.ilpoomhanwoo.com/" target="_blank" rel="noopener noreferrer">일품한우 원본 보기 ↗</a></div></div>
+          </section>
+          <p class="price-disclaimer">현재 목록은 원본 페이지의 공개 상품이며 사이트 전체 재고가 아닙니다. 가격은 마지막 수집 시점의 정보입니다. 등급·중량·부가세·배송 조건은 원본에서 확인하고, 주문 전 판매처에 최종 가격을 확인하세요.</p>
+        </section>
+        <section id="settings-view" hidden>
+          <div class="page-heading"><div><p class="eyebrow dark">TEAM SETTINGS</p><h1>관리 설정<span class="heading-dot">.</span></h1><p class="muted">가격 페이지 연결과 직원 계정을 관리합니다.</p></div></div>
+          <section class="settings-card"><div class="section-heading"><div><h2>가격 수집</h2><p class="muted">공개 가격 페이지의 전체 주소를 입력하세요.</p></div><button id="refresh-source" class="button primary">지금 수집</button></div><div class="notice">일품한우 공개 상품 카드와 구조화 상품 정보·단순 가격표를 지원합니다. 금천미트는 가격 API 연결 확인이 필요합니다. 기본 수집 범위는 각 메인 페이지의 공개 상품입니다.</div><div id="source-forms"></div><p class="small muted">사이트 접근 정책을 준수하며, 로그인이나 접근 제한을 우회하지 않습니다. 주소를 바꾸면 해당 사이트의 이전 가격이 초기화됩니다.</p></section>
+          <section class="settings-card"><h2>직원 계정</h2><p class="muted">직원마다 별도 계정을 만들어 전달하세요.</p><form id="add-user-form" class="user-form"><label>이름<input name="name" placeholder="직원 이름" required maxlength="40"></label><label>아이디<input name="username" placeholder="영문·숫자 3자 이상" pattern="[a-zA-Z0-9._-]{3,40}" required autocomplete="off"></label><label>초기 비밀번호<input name="password" type="password" placeholder="12자 이상" minlength="12" maxlength="128" required autocomplete="new-password"></label><button class="button primary" type="submit">직원 추가</button></form><div id="user-list" class="user-list"></div></section>
+          <section class="settings-card"><h2>직원 계정 복구</h2><p class="muted">비밀번호를 재설정하고 계정을 활성화합니다. 해당 직원의 기존 로그인은 만료됩니다.</p><form id="reset-user-form" class="user-form"><label>복구할 직원 아이디<input name="username" required autocomplete="off"></label><label>새 비밀번호<input name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password"></label><button type="submit" class="button secondary">재설정 · 활성화</button></form></section>
+          <section class="settings-card"><h2>휴대폰에서 빠르게 열기</h2><p class="muted">배포된 HTTPS 주소를 직원들에게 공유하세요. iPhone은 Safari의 공유 → 홈 화면에 추가, Android는 Chrome 메뉴 → 홈 화면에 추가로 바로가기를 만들 수 있습니다. 가격 조회에는 인터넷 연결이 필요합니다.</p></section>
+        </section>
+        <footer class="footer"><span>대구축협 육가공공장</span><span>직원 전용 · 한눈에 시세</span></footer>
+      </main>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
