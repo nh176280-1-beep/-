@@ -1,6 +1,6 @@
 {
   "name": "daegu-meat-prices-cloud",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "engines": {
     "node": ">=24.5.0"
@@ -11,7 +11,7 @@
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "test": "node tests/collector.test.cjs && node tests/public-access.test.cjs && node tests/live.test.mjs",
+    "test": "node tests/collector.test.cjs && node tests/public-access.test.cjs && node tests/live.test.mjs && node tests/category.test.mjs",
     "check:sources": "node --use-env-proxy scripts/check-sources.mjs"
   },
   "dependencies": {

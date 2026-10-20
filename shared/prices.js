@@ -96,11 +96,12 @@ export function parsePrices(html, source, pageUrl) {
   return [...new Map(items.map(item => [item.id, item])).values()];
 }
 
-export async function fetchPage(url, source, fetcher = fetch, { accept = 'text/html,text/plain;q=0.9' } = {}) {
+export async function fetchPage(url, source, fetcher = fetch, { accept = 'text/html,text/plain;q=0.9', method = 'GET', body } = {}) {
   let current = validateUrl(url, source);
   for (let redirects = 0; redirects <= 3; redirects++) {
-    const response = await fetcher(current, { redirect: 'manual', signal: AbortSignal.timeout(12000), headers: { 'User-Agent': 'DaeguPriceBoard/1.0', Accept: accept } });
+    const response = await fetcher(current, { method,body,redirect: 'manual', signal: AbortSignal.timeout(12000), headers: { 'User-Agent': 'DaeguPriceBoard/1.0', Accept: accept,...(body?{'Content-Type':'application/json',Origin:'https://www.ekcm.co.kr',Referer:'https://www.ekcm.co.kr/'}:{}) } });
     if ([301, 302, 303, 307, 308].includes(response.status)) {
+      if(method!=='GET'){await response.body?.cancel();throw Error('원본 POST 조회의 리다이렉트를 허용하지 않습니다.');}
       await response.body?.cancel();
       current = validateUrl(new URL(response.headers.get('location'), current).href, source);
       continue;

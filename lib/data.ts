@@ -1,7 +1,7 @@
 import {env} from 'cloudflare:workers';
 import {getChatGPTUser} from '../app/chatgpt-auth';
 import {chunks,seedSources} from './seed';
-import {describe,PARTS} from '../shared/conditions';
+import {describe,PARTS,PART_ALIAS} from '../shared/conditions';
 export const database=():any=>{const db=(env as any).DB;if(!db)throw new Error('영구 저장소 연결을 확인하고 있습니다.');return db;};
 export async function identity(request?:Request){
  const person=await getChatGPTUser();
@@ -47,9 +47,10 @@ export async function listing(user:any,url:URL){
  for(const term of q.split(/\s+/).filter(Boolean)){where.push("p.search LIKE ? ESCAPE '\\'");values.push('%'+term.toLowerCase().replace(/[\\%_]/g,'\\$&')+'%');}
  const part=url.searchParams.get('part'),grade=url.searchParams.get('grade'),storage=url.searchParams.get('storage'),species=url.searchParams.get('species');
  if(part&&PARTS.includes(part)){
-  const parts=[...PARTS].sort((a,b)=>b.length-a.length);
-  where.push('(CASE '+parts.map(()=>"WHEN instr(p.name,?)>0 THEN ?").join(' ')+" ELSE '' END)=?");
-  for(const x of parts)values.push(x,x);values.push(part);
+  const parts=[...PARTS,...Object.keys(PART_ALIAS)].sort((a,b)=>b.length-a.length);
+  const expression="coalesce(nullif(json_extract(p.data,'$.part'),''),(CASE "+parts.map(()=>"WHEN instr(p.name,?)>0 THEN ?").join(' ')+" ELSE '' END))";
+  for(const x of parts)values.push(x,(PART_ALIAS as any)[x]||x);
+  if(part==='등심'){where.push(expression+' IN (?,?,?,?)');values.push('등심','꽃등심','윗등심','아랫등심');}else{where.push(expression+'=?');values.push(part);}
  }
  if(grade&&['1++','1+','1','2','3'].includes(grade)){where.push("(json_extract(p.data,'$.grade')=? OR json_extract(p.data,'$.grade') LIKE ?)");values.push(grade,grade+'(%');}
  if(storage&&['냉장','냉동'].includes(storage)){where.push('instr(p.name,?)>0 AND instr(p.name,?)=0');values.push(storage,storage==='냉장'?'냉동':'냉장');}

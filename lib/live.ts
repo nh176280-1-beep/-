@@ -38,13 +38,10 @@ async function record(user:any,kind:string,query:any,result:any){
 export async function liveSearch(user:any,input:any){
  const c=criteria(input);await limit('live:'+user.id,15);
  const sources=await Promise.all(['ekcm','ilpoom'].map(async id=>{
-  const key='search:'+id+':'+JSON.stringify(c);
+  const key='search:category-v3:'+id+':'+JSON.stringify(c);
   try{return await cached(key,()=>searchSource(id,c));}
   catch(e:any){
-   const params=new URLSearchParams({source:id,...Object.fromEntries(Object.entries(c).map(([k,v])=>[k,String(v)]))});
-   // A snapshot fallback is explicitly separate from a current original-site result.
-   const data=await listing(user,new URL('https://local/api/prices?'+params));const state=data.sources.find((s:any)=>s.id===id);
-   return {sourceId:id,name:state?.name||(id==='ekcm'?'금천미트':'일품한우'),status:data.items.length?'snapshot':'error',checkedAt:state?.checked_at||null,items:data.items.map((i:any)=>({...i,checkedAt:state?.checked_at})),rawCount:null,sourceTotal:null,hasMore:false,page:c.page,error:e.message,scope:'원본 조회 실패 · 저장 목록의 일부입니다. 최신 검색 결과가 아닙니다.'};
+   return {sourceId:id,name:id==='ekcm'?'금천미트':'일품한우',status:'error',checkedAt:null,items:[],rawCount:null,sourceTotal:null,hasMore:false,page:1,error:e.message,complete:false,scope:'검증된 원료육 사본이 없습니다. 이전 이름 검색 결과와 저장 목록은 비교에 사용하지 않습니다.'};
   }
  }));
  const favoriteRows=await database().prepare('SELECT source,product_id FROM favorites WHERE user_id=?').bind(user.id).all();
@@ -62,7 +59,12 @@ export async function liveSearch(user:any,input:any){
 }
 export async function liveDetail(user:any,input:any){
  const id=String(input.source||''),goodsNo=String(input.goodsNo||'');detailURL(id,goodsNo);await limit('detail:'+user.id,20);
- const result=await cached('detail:'+id+':'+goodsNo,async()=>({...await detailSource(id,goodsNo),status:'live'}));
+ let result:any;
+ if(id==='ekcm'){
+  const row=await database().prepare("SELECT data FROM products WHERE generation='live' AND source='ekcm' AND json_extract(data,'$.goodsNo')=? AND json_extract(data,'$.categoryVerified')=1 ORDER BY json_extract(data,'$.checkedAt') DESC LIMIT 1").bind(goodsNo).first();
+  if(row){const item=JSON.parse(row.data);result={sourceId:id,goodsNo,status:'cached',productionDate:item.productionDate||'',expiryDate:item.expiryDate||'',expiryLabel:'소비기한',origin:item.origin||'',traceNo:item.traceNo||'',checkedAt:item.checkedAt,priceVerified:false,note:'원료육 상품 API에서 가격과 함께 확인한 상세 정보입니다.'};}
+ }
+ if(!result)result=await cached('detail:category-v3:'+id+':'+goodsNo,async()=>({...await detailSource(id,goodsNo),status:'live'}));
  await record(user,'detail',{source:id,goodsNo},{status:result.status}).catch(()=>{});return result;
 }
 export async function auditLog(){return (await database().prepare('SELECT kind,query,result,at FROM query_audit ORDER BY at DESC LIMIT 100').all()).results;}

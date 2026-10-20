@@ -11,7 +11,7 @@ for(const file of ['drizzle/0000_sweet_sister_grimm.sql','drizzle/0001_fantastic
 const db={prepare(sql){let values=[];return {bind(...v){values=v;return this},async first(){return sqlite.prepare(sql).get(...values)||null},async all(){return {results:sqlite.prepare(sql).all(...values)}},async run(){return sqlite.prepare(sql).run(...values)}}}};
 const compile=(path,deps={},globals={})=>{const context={exports:{},require:name=>name in deps?deps[name]:require(name),console,crypto:globalThis.crypto,URL,URLSearchParams,Date,JSON,Number,Math,Set,Map,Promise,setTimeout,Response,Request,...globals};vm.createContext(context);vm.runInContext(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,context);return context.exports;};
 const data=compile('lib/data.ts',{'cloudflare:workers':{env:{DB:db}},'../app/chatgpt-auth':{getChatGPTUser:async()=>null},'./seed':{chunks:[],seedSources:{}},'../shared/conditions':conditions});
-const base={id:'01234567890123456789',name:'한우등심/거세/1+[냉장]',sourceId:'ilpoom',sourceName:'일품한우',grade:'1+',unit:'1kg',price:50000,url:'https://www.ilpoomhanwoo.com/goods/view?no=123',lotWeight:'5kg',totalPrice:250000};
+const base={categoryVerified:true,format:'원료육',id:'01234567890123456789',name:'한우등심/거세/1+[냉장]',sourceId:'ilpoom',sourceName:'일품한우',grade:'1+',unit:'1kg',price:50000,url:'https://www.ilpoomhanwoo.com/goods/view?no=123',lotWeight:'5kg',totalPrice:250000};
 for(const source of ['ekcm','ilpoom'])await db.prepare('INSERT INTO sources VALUES(?,?,?,?,?,?)').bind(source,'seed','ok',JSON.stringify({priceCount:1}),'2026-10-19T00:00:00Z','test').run();
 await data.insertItems(db,'seed','ilpoom',[base]);
 let calls={ekcm:0,ilpoom:0},fail=new Set();
@@ -24,13 +24,16 @@ let next=await live.liveSearch(user,query);assert(next.sources.every(s=>s.status
 sqlite.exec("UPDATE live_cache SET checked_at='2000-01-01T00:00:00Z'");fail.add('ekcm');
 next=await live.liveSearch(user,query);assert.equal(next.sources[0].status,'stale');assert.equal(next.sources[0].checkedAt,first.sources[0].checkedAt);assert.equal(next.sources[1].status,'live');
 // A never-seen query falls back to the stored snapshot, with explicit stale/snapshot status.
-fail.add('ilpoom');next=await live.liveSearch(user,{...query,q:'한우'});assert.equal(next.sources[1].status,'snapshot');assert.equal(next.sources[1].items[0].price,50000);
+fail.add('ilpoom');next=await live.liveSearch(user,{...query,q:'한우'});assert.equal(next.sources[1].status,'error');assert.equal(next.sources[1].items.length,0);
 // Live-only products remain visible in favorites, even when absent from the full snapshot.
 await db.prepare('INSERT INTO favorites VALUES(?,?,?)').bind(user.id,'ekcm','abcdef01234567890123').run();
 const favorites=await data.listing(user,new URL('https://local/api/prices?favorites=1'));assert.equal(favorites.total,1);assert.equal(favorites.items[0].sourceId,'ekcm');
 const filtered=await data.listing(user,new URL('https://local/api/prices?source=ilpoom&part=등심&grade=1%2B&storage=냉장&species=한우&q=한우%20등심'));assert.equal(filtered.total,1);
-assert(!conditions.matches({...base,grade:'1++(9)'},query));assert(!conditions.matches({...base,name:'한우꽃등심/거세/1+[냉장]'},query));
+assert(!conditions.matches({...base,grade:'1++(9)'},query));assert.equal(conditions.describe({...base,name:'한우꽃등심/거세/1+[냉장]'}).part,'꽃등심');
 assert.equal(conditions.describe({name:'냉장 냉동 혼합'}).storage,'');
+assert.equal(conditions.describe({name:'한우아래등심/거세/1+[냉장]'}).part,'아랫등심');
+assert.equal(conditions.comparableGroups([{...base,categoryVerified:false}]).length,0);
+assert.equal(conditions.comparableGroups([{...base,format:'소포장'}]).length,0);
 const groups=conditions.comparableGroups([{...base,grade:'1++(7)'},{...base,grade:'1++(9)'}]);assert.equal(groups.length,2);
 const detail=adapters.parseDetail('<ul class="detail_spec_table"><li class="th">생산일자</li><li class="td">2026-10-08</li></ul><ul class="detail_spec_table"><li class="th">유통기한</li><li class="td">2026-12-06</li></ul>','ilpoom');assert.equal(detail.productionDate,'2026-10-08');assert.equal(detail.expiryDate,'2026-12-06');assert.equal(detail.priceVerified,false);
 assert.equal(adapters.parseDetail('<p>페이지 작성일 2026-10-20</p>','ekcm').productionDate,'');
@@ -46,5 +49,5 @@ response=await routes.POST(new Request('https://site.test/api/live',{method:'POS
 response=await routes.POST(new Request('https://site.test/api/live',{method:'POST',body:'x'.repeat(17000)}));assert.equal(response.status,413);
 response=await routes.POST(new Request('https://site.test/api/favorite',{method:'POST',body:JSON.stringify({source:'ilpoom',id:'ffffffffffffffffffff',saved:true})}));assert.equal(response.status,400);
 response=await routes.GET(new Request('https://site.test/api/me'));assert.equal(response.status,200);assert(response.headers.get('set-cookie').includes('HttpOnly'));assert.equal((await response.json()).user.role,'viewer');
-console.log('PASS: live/cache/stale/snapshot states, timestamp preservation, single-flight, per-source failure isolation, SQL filters, live favorites, exact grades/parts, detail dates, URL validation, independent collection jobs, audit and limits');
+console.log('PASS: live/cache/stale and unverified-fallback denial, timestamp preservation, single-flight, per-source failure isolation, SQL filters, live favorites, exact grades/parts, detail dates, URL validation, independent collection jobs, audit and limits');
 sqlite.close();
