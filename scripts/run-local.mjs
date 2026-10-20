@@ -10,9 +10,12 @@ if (!app.auth.users().length) {
   await app.auth.addUser('admin', '관리자', password, 'admin');
   console.log(`\n첫 로그인 아이디: admin\n첫 로그인 비밀번호: ${password}\n비밀번호를 안전한 곳에 보관하세요. 이 창에서 한 번만 표시합니다.\n`);
 }
-app.server.on('error', error => { console.error('앱 실행 실패:', error.message); process.exitCode = 1; });
+app.server.on('error', error => {
+  console.error(error.code === 'EADDRINUSE' ? '3000번 포트가 사용 중입니다. 이전 앱 실행 창을 닫은 뒤 다시 실행하세요.' : `앱 실행 실패: ${error.message}`);
+  process.exitCode = 1;
+});
 app.server.listen(3000, '127.0.0.1', () => {
-  const url = 'http://localhost:3000';
+  const url = 'http://127.0.0.1:3000';
   console.log(`실제 가격 조회 앱: ${url}\n종료하려면 이 창에서 Ctrl+C를 누르세요.\n원본 사이트 가격을 수집하고 있습니다.`);
   const command = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
   const browser = spawn(command[0], command[1], { stdio: 'ignore' });
