@@ -107,3 +107,23 @@ test('unsupported page does not fabricate prices', async t => {
   await app.collector.refresh({ force: true });
   assert.equal(app.collector.state()[0].items.length, 0); assert.equal(app.collector.state()[0].status, 'error');
 });
+test('admin refresh returns promptly while full collection continues in the background', async t => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const app = await fixture(t, async url => {
+    await gate;
+    return new Response(url.endsWith('/robots.txt') ? '' : '<script type="application/ld+json">{"@type":"Product","name":"테스트 상품","offers":{"price":12345,"priceCurrency":"KRW"}}</script>');
+  });
+  try {
+    const cookie = await app.login();
+    const response = await app.request('/api/refresh', {}, cookie);
+    assert.equal(response.status, 202);
+    assert.equal((await response.json()).refreshing, true);
+    assert.equal(app.collector.running, true);
+    assert.equal(app.collector.state()[0].collecting, true);
+  } finally {
+    release();
+    await app.collector.refresh();
+  }
+  assert.equal(app.collector.state()[0].collecting, false);
+});

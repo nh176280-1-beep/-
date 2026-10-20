@@ -31,18 +31,18 @@ export function parsePrices(html, source, pageUrl) {
   }
   // Verified against ilpoomhanwoo.com public product cards. Unit price and lot total are distinct.
   if (source.id === 'ilpoom') {
-    $('li.gl_item').each((_, element) => {
+    $('li.gl_item, li.goods_list_style1').each((_, element) => {
       const card = $(element);
-      const link = card.find('.displaY_goods_name a[href]').first();
+      const link = card.find('.displaY_goods_name a[href], .goods_name_area a[href]').first();
       const name = clean(link.text());
-      const priceBlocks = card.find('.displaY_sales_price').toArray();
+      const priceBlocks = card.find('.displaY_sales_price, .goods_price_area').toArray();
       const unitBlock = priceBlocks.find(block => /kg당/.test($(block).text()));
       if (!unitBlock || !name) return;
       const unitText = clean($(unitBlock).text());
       const match = unitText.match(/kg당\s*([\d,]+)\s*원\s*\/\s*([\d.]+)\s*kg/);
       if (!match) return;
-      const totalBlock = priceBlocks.find(block => block !== unitBlock && $(block).find('.nuM').length);
-      const totalPrice = totalBlock ? priceNumber($(totalBlock).find('.nuM').first().text()) : null;
+      const totalBlock = priceBlocks.find(block => block !== unitBlock && $(block).find('.nuM, .num').length);
+      const totalPrice = totalBlock ? priceNumber($(totalBlock).find('.nuM, .num').first().text()) : null;
       let itemUrl;
       try { itemUrl = validateUrl(new URL(link.attr('href'), pageUrl).href, source); } catch { return; }
       add({ name, price: priceNumber(match[1]), unit: '1kg', grade: name.match(/\/(1\+\+(?:\(\d+\))?|1\+|[123])\[/)?.[1] || '', lotWeight: `${match[2]}kg`, totalPrice, url: itemUrl,

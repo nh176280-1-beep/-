@@ -1,10 +1,19 @@
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { createApp } from '../src/server.js';
 
 process.chdir(fileURLToPath(new URL('../', import.meta.url)));
 const app = await createApp({ secure: false, dataDir: './data' });
+try {
+  const snapshot = JSON.parse(await readFile(new URL('../seed/prices.json', import.meta.url), 'utf8'));
+  const saved = app.store.read('prices', {});
+  for (const [id, source] of Object.entries(snapshot)) {
+    if (Array.isArray(source.items) && source.coverage && (!saved[id] || new Date(source.lastSuccess) > new Date(saved[id].lastSuccess || 0))) saved[id] = source;
+  }
+  app.store.write('prices', saved);
+} catch (error) { if (error.code !== 'ENOENT') throw error; }
 if (!app.auth.users().length) {
   const password = randomBytes(15).toString('base64url');
   await app.auth.addUser('admin', '관리자', password, 'admin');

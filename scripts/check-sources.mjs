@@ -15,6 +15,7 @@ const results = collector.state().map(source => ({
   checkedAt: source.lastAttempt,
   message: source.message,
   errorCodes: source.errorCodes || [],
+  coverage: source.coverage || null,
 }));
 console.log(JSON.stringify({ liveSourceChecks: results }, null, 2));
 if (results.some(result => result.status !== 'ok' || result.productCount === 0)) {

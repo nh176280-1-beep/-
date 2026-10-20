@@ -2,6 +2,8 @@ const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const state = { user: null, sources: [], view: 'prices', source: 'all', search: '', sort: 'name', favorites: new Set(), requestFailed: false };
 let toastTimer, pollTimer;
+let pricePage = 1, priceQuery = '', pricePageCount = 1;
+let lastPriceLoad = 0, loadingPrices = false;
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -55,12 +57,15 @@ async function showApp(user) {
   await loadPrices();
   changeView('prices');
   clearInterval(pollTimer);
-  pollTimer = setInterval(() => { if (document.visibilityState === 'visible') loadPrices(); }, 60_000);
+  pollTimer = setInterval(() => { if (document.visibilityState === 'visible' && (state.sources.some(source => source.collecting) || Date.now() - lastPriceLoad >= 60_000)) loadPrices(); }, 10_000);
 }
 async function loadPrices() {
+  if (loadingPrices) return false;
+  loadingPrices = true;
   try {
     const data = await api('/api/prices');
     state.sources = data.sources;
+    lastPriceLoad = Date.now();
     state.requestFailed = false;
     renderPrices();
     return true;
@@ -70,6 +75,8 @@ async function loadPrices() {
     renderPrices();
     toast(error.message === 'Failed to fetch' ? '서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요.' : error.message);
     return false;
+  } finally {
+    loadingPrices = false;
   }
 }
 function isStale(source) { return source.status !== 'ok' || !source.lastSuccess || Date.now() - new Date(source.lastSuccess).getTime() > 60 * 60_000; }
@@ -80,20 +87,31 @@ function renderPrices() {
   const cards = state.sources.map(source => {
     const card = el('div', 'source-card');
     const detail = el('div');
-    detail.append(el('strong', '', source.name), el('p', '', source.lastSuccess ? `${formatTime(source.lastSuccess)} 확인 · ${source.items?.length || 0}개` : '원본 가격 확인 대기'));
-    const status = source.status === 'ok' && !isStale(source) ? ['ok', '확인 완료'] : source.status === 'error' ? ['error', '연결 확인 필요'] : ['pending', source.lastSuccess ? '갱신 지연' : '확인 대기'];
+    const progress = source.progress;
+    detail.append(el('strong', '', source.name), el('p', '', source.collecting ? `전체 수집 중 · ${(progress?.scanned || 0).toLocaleString('ko-KR')}개 확인${progress?.sourceTotal ? ` / ${progress.sourceTotal.toLocaleString('ko-KR')}개` : ''}` : source.lastSuccess ? `${formatTime(source.lastSuccess)} 확인 · ${source.items?.length || 0}개` : '원본 가격 확인 대기'));
+    if (source.coverage && !source.collecting) detail.append(el('p', '', `${source.coverage.scanned.toLocaleString('ko-KR')}개 조회 · 가격 제외 ${source.coverage.excludedCount.toLocaleString('ko-KR')}개${source.coverage.unavailableCount ? ` · 원본 목록 차이 ${source.coverage.unavailableCount.toLocaleString('ko-KR')}개` : ''}`));
+    if (source.coverage?.changedDuringCollection && !source.collecting) detail.append(el('p', '', `수집 중 재고 변동 · 시작 ${source.coverage.sourceTotalAtStart.toLocaleString('ko-KR')}개 → 종료 ${source.coverage.sourceTotal.toLocaleString('ko-KR')}개`));
+    const status = source.collecting ? ['pending', '전체 수집 중'] : source.status === 'partial' ? ['error', '일부 확인'] : source.status === 'ok' && !isStale(source) ? ['ok', '확인 완료'] : source.status === 'error' ? ['error', '연결 확인 필요'] : ['pending', source.lastSuccess ? '갱신 지연' : '확인 대기'];
     card.append(el('span', 'source-avatar', source.id === 'ekcm' ? 'E' : '일'), detail, el('span', `status-pill ${status[0]}`, status[1]));
     return card;
   });
   $('#source-status').replaceChildren(...cards);
-  const errors = state.sources.filter(source => source.status === 'error');
+  const errors = state.sources.filter(source => ['error', 'partial'].includes(source.status));
   const warning = $('#connection-warning');
   warning.hidden = !errors.length && !state.requestFailed;
   warning.textContent = state.requestFailed ? '서버 연결이 끊겼습니다. 아래 정보는 이전에 조회한 내용이며 최신 여부를 확인할 수 없습니다.' : errors.map(source => `${source.name}: ${state.user?.role === 'admin' ? source.message : '최신 가격을 확인하지 못했습니다. 원본 사이트에서 확인해 주세요.'}`).join(' / ');
   let items = all.filter(item => (state.source === 'all' || item.sourceId === state.source) && (state.view !== 'favorites' || state.favorites.has(favoriteKey(item))) && `${item.name} ${item.grade} ${item.unit}`.toLowerCase().includes(state.search.toLowerCase().trim()));
   items.sort(state.sort === 'recent' ? (a, b) => new Date(b.lastSuccess) - new Date(a.lastSuccess) || a.name.localeCompare(b.name, 'ko') : (a, b) => a.name.localeCompare(b.name, 'ko'));
   $('#result-count').textContent = items.length.toLocaleString('ko-KR');
-  $('#price-grid').replaceChildren(...items.map(priceCard));
+  const query = JSON.stringify([state.source, state.view, state.search, state.sort]);
+  if (query !== priceQuery) { pricePage = 1; priceQuery = query; }
+  pricePageCount = Math.max(1, Math.ceil(items.length / 100));
+  pricePage = Math.min(pricePage, pricePageCount);
+  $('#price-grid').replaceChildren(...items.slice((pricePage - 1) * 100, pricePage * 100).map(priceCard));
+  $('#price-pagination').hidden = items.length <= 100;
+  $('#price-page-info').textContent = `${pricePage} / ${pricePageCount} 페이지 · 전체 ${items.length.toLocaleString('ko-KR')}개`;
+  $('#price-previous').disabled = pricePage <= 1;
+  $('#price-next').disabled = pricePage >= pricePageCount;
   $('#empty-state').hidden = Boolean(items.length);
   if (state.view === 'favorites' && !items.length) {
     $('#empty-title').textContent = '관심 품목을 모아보세요';
@@ -198,10 +216,12 @@ $$('.nav-item').forEach(button => button.addEventListener('click', () => changeV
 $$('.tab').forEach(button => button.addEventListener('click', () => { state.source = button.dataset.source; renderPrices(); }));
 $('#search').addEventListener('input', event => { state.search = event.target.value; renderPrices(); });
 $('#sort').addEventListener('change', event => { state.sort = event.target.value; renderPrices(); });
+$('#price-previous').addEventListener('click', () => { if (pricePage > 1) { pricePage--; renderPrices(); } });
+$('#price-next').addEventListener('click', () => { if (pricePage < pricePageCount) { pricePage++; renderPrices(); } });
 $('#reload').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; if (await loadPrices()) toast('최신 저장 정보를 조회했습니다.'); button.disabled = false; });
 $('#refresh-source').addEventListener('click', async event => {
   const button = event.currentTarget; button.disabled = true; button.textContent = '수집 중…';
-  try { const result = await api('/api/refresh', {}); await loadPrices(); toast(result.refreshed ? '수집 확인이 끝났습니다. 가격 조회에서 사이트별 상태를 확인하세요.' : '수집 요청은 1분 간격으로 가능합니다.'); }
+  try { const result = await api('/api/refresh', {}); await loadPrices(); toast(result.refreshing ? '전체 수집을 진행하고 있습니다. 가격 조회에서 진행 건수를 확인하세요.' : '수집 요청은 1분 간격으로 가능합니다.'); }
   catch (error) { toast(error.message); }
   finally { button.disabled = false; button.textContent = '지금 수집'; }
 });

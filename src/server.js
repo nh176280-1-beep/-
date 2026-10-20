@@ -82,8 +82,8 @@ export async function createApp(options = {}) {
         if (pathname === '/api/prices' && req.method === 'GET') return json(200, { sources: collector.state(), refreshing: collector.running, intervalMinutes: collector.intervalMs / 60_000, serverTime: new Date().toISOString() });
         if (user.role !== 'admin') return json(403, { error: '관리자만 사용할 수 있습니다.' });
         if (pathname === '/api/refresh' && req.method === 'POST') {
-          const refreshed = await collector.refresh();
-          return json(200, { refreshed, sources: collector.state() });
+          collector.refresh().catch(error => console.error('Collection failed:', error.message));
+          return json(collector.running ? 202 : 200, { refreshing: collector.running });
         }
         if (pathname === '/api/sources' && req.method === 'POST') {
           const input = await body(req);

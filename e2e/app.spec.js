@@ -73,3 +73,15 @@ test('login page has no horizontal overflow at narrow mobile width', async ({ pa
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/mobile-login.png', fullPage: true });
 });
+test('large catalog remains searchable across every page and shows collection progress', async ({ page }) => {
+  await page.route('**/api/prices', route => route.fulfill({ json: { sources: [{ id: 'ekcm', name: '금천미트', status: 'ok', collecting: true, progress: { scanned: 5000, sourceTotal: 50500 }, lastSuccess: new Date().toISOString(), items: Array.from({ length: 301 }, (_, i) => ({ id: String(i), sourceId: 'ekcm', sourceName: '금천미트', name: `상품${String(i).padStart(4, '0')}`, grade: '1++', unit: '1kg', price: 110000, url: `https://www.ekcm.co.kr/pd/productDetail?goodsNo=${i}` })) }] } }));
+  await login(page);
+  await expect(page.locator('#result-count')).toHaveText('301');
+  await expect(page.locator('.price-card')).toHaveCount(100);
+  await expect(page.locator('#source-status')).toContainText('5,000개 확인 / 50,500개');
+  await page.locator('#price-next').click();
+  await expect(page.locator('#price-page-info')).toContainText('2 / 4');
+  await page.getByLabel('품목 또는 등급 검색').fill('상품0300');
+  await expect(page.locator('.price-card')).toHaveCount(1);
+  await expect(page.locator('#price-grid')).toContainText('상품0300');
+});
