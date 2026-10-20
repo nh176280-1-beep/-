@@ -96,10 +96,10 @@ export function parsePrices(html, source, pageUrl) {
   return [...new Map(items.map(item => [item.id, item])).values()];
 }
 
-export async function fetchPage(url, source, fetcher = fetch) {
+export async function fetchPage(url, source, fetcher = fetch, { accept = 'text/html,text/plain;q=0.9' } = {}) {
   let current = validateUrl(url, source);
   for (let redirects = 0; redirects <= 3; redirects++) {
-    const response = await fetcher(current, { redirect: 'manual', signal: AbortSignal.timeout(12000), headers: { 'User-Agent': 'DaeguPriceBoard/1.0', Accept: 'text/html,text/plain;q=0.9' } });
+    const response = await fetcher(current, { redirect: 'manual', signal: AbortSignal.timeout(12000), headers: { 'User-Agent': 'DaeguPriceBoard/1.0', Accept: accept } });
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       await response.body?.cancel();
       current = validateUrl(new URL(response.headers.get('location'), current).href, source);

@@ -1,5 +1,20 @@
 import robotsParser from 'robots-parser';
 import { SOURCES, fetchPage, parsePrices, validateUrl } from './prices.js';
+import { fetchEkcmPrices } from './ekcm.js';
+
+function networkErrorCodes(error) {
+  const codes = new Set();
+  const seen = new Set();
+  function visit(value) {
+    if (!value || typeof value !== 'object' || seen.has(value)) return;
+    seen.add(value);
+    if (typeof value.code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(value.code)) codes.add(value.code);
+    visit(value.cause);
+    if (Array.isArray(value.errors)) value.errors.forEach(visit);
+  }
+  visit(error);
+  return [...codes];
+}
 
 export function createCollector(store, options = {}) {
   let running = null;
@@ -22,15 +37,16 @@ export function createCollector(store, options = {}) {
       catch (error) { if (!error.message.includes('HTTP 404')) throw error; }
       if (robotsParser(robotsUrl, robotsText).isAllowed(url, 'DaeguPriceBoard') === false) throw new Error('사이트의 robots.txt에서 자동 수집을 허용하지 않습니다.');
       const page = await fetchPage(url, source, fetcher);
-      const items = parsePrices(page.html, source, page.url);
+      let items = parsePrices(page.html, source, page.url);
+      if (!items.length && source.id === 'ekcm' && page.html.includes('gw.ekcm.co.kr')) items = await fetchEkcmPrices(source, fetcher);
       if (!items.length) throw new Error(source.id === 'ekcm' && page.html.includes('gw.ekcm.co.kr') ? '금천미트 가격은 별도 API(gw.ekcm.co.kr)에서 불러옵니다. API 연결 및 공개 가격 확인이 필요합니다.' : '이 페이지에서 공개 가격표를 찾지 못했습니다. 가격 페이지 주소 또는 사이트별 수집 방식 확인이 필요합니다.');
       const saved = store.read('prices', {});
-      saved[source.id] = { status: 'ok', items, lastSuccess: attemptedAt, lastAttempt: attemptedAt, message: `${items.length}개 가격을 확인했습니다.` };
+      saved[source.id] = { status: 'ok', items, lastSuccess: attemptedAt, lastAttempt: attemptedAt, errorCodes: [], message: `${items.length}개 가격을 확인했습니다.` };
       store.write('prices', saved);
     } catch (error) {
       const saved = store.read('prices', {});
       const message = error.message === 'fetch failed' ? '원본 사이트에 연결할 수 없습니다. 네트워크 허용 설정과 사이트 접근 상태를 확인하세요.' : error.name === 'TimeoutError' ? '원본 사이트 응답 시간이 초과되었습니다.' : error.message;
-      saved[source.id] = { ...saved[source.id], status: 'error', lastAttempt: attemptedAt, message };
+      saved[source.id] = { ...saved[source.id], status: 'error', lastAttempt: attemptedAt, errorCodes: networkErrorCodes(error), message };
       store.write('prices', saved);
     }
   }
