@@ -21,7 +21,7 @@ export function parseEkcmPrices(data, source) {
     const name = String(row.goodsNm).replace(/\s+/g, ' ').trim();
     const unit = byWeight ? '1kg' : String(extra.SALE_UNIT_GB_NM || '단위 미표기');
     const id = createHash('sha256').update(JSON.stringify([source.id, url, name, grade, unit])).digest('hex').slice(0, 20);
-    items.push({ id, sourceId: source.id, sourceName: source.name, name, price, totalPrice, unit, grade, lotWeight: weight ? `${weight}kg` : '', url, availability: Number(extra.STK_QTY) > 0 ? '' : '품절', method: '금천미트 공개 전체 상품 API' });
+    items.push({ goodsNo:String(row.goodsNo),classificationText:String(extra.ARTC_NM||row.artcNm||'')+' '+String(extra.LSSPE_NM||''),gradeBasis:'원본 API 등급', id, sourceId: source.id, sourceName: source.name, name, price, totalPrice, unit, grade, lotWeight: weight ? `${weight}kg` : '', url, availability: Number(extra.STK_QTY) > 0 ? '' : '품절', method: '금천미트 공개 전체 상품 API' });
   }
   return [...new Map(items.map(item => [item.id, item])).values()];
 }

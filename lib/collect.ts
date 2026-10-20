@@ -22,8 +22,8 @@ async function activate(job:any,reported:number,missing=0){
  const message=`상품 ${scanned.toLocaleString('ko-KR')}개 확인 · 공개 가격 ${prices.toLocaleString('ko-KR')}개${missing?' · 원본 목록 차이 '+missing+'개 (전체 완료 아님)':''}`;
  await db.prepare('INSERT INTO sources(id,generation,status,coverage,checked_at,message) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET generation=excluded.generation,status=excluded.status,coverage=excluded.coverage,checked_at=excluded.checked_at,message=excluded.message').bind(id,job.id,missing?'partial':'ok',JSON.stringify(coverage),now(),message).run();
  // Keep the active generation and discard retired versions of this source.
- await db.prepare('DELETE FROM products WHERE source=? AND generation<>?').bind(id,job.id).run();
- job.state= id==='ekcm'?{phase:'ilpoom',init:false,pages:0}:{phase:'done',pages:job.state.pages};
+ await db.prepare("DELETE FROM products WHERE source=? AND generation<>? AND generation<>'live'").bind(id,job.id).run();
+ job.state= id==='ekcm'&&job.state.source==='all'?{phase:'ilpoom',source:'all',init:false,pages:0}:{phase:'done',source:job.state.source,pages:job.state.pages};
 }
 async function advance(job:any){
  const s=job.state;
@@ -69,13 +69,21 @@ async function advance(job:any){
   s.progress=`일품한우 · ${await count(job)}개 확인 · ${s.index}/${s.categories.length} 카테고리`;
  }
 }
-export async function jobStatus(){const r=await database().prepare('SELECT * FROM jobs ORDER BY updated_at DESC LIMIT 1').first();return r?{id:r.id,status:r.status,error:r.error,progress:JSON.parse(r.state).progress||JSON.parse(r.state).phase}:null;}
-export async function start(){const db=database();const running=await db.prepare("SELECT id FROM jobs WHERE status='running' LIMIT 1").first();if(running)return jobStatus();const id='collect-'+crypto.randomUUID();await db.prepare("INSERT INTO jobs(id,state,status,updated_at) SELECT ?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM jobs WHERE status='running')").bind(id,JSON.stringify({phase:'ekcm',init:false,pages:0}),'running',now()).run();return jobStatus();}
+export async function jobStatus(id?:string){const db=database();const r=await (id?db.prepare('SELECT * FROM jobs WHERE id=?').bind(id):db.prepare('SELECT * FROM jobs ORDER BY updated_at DESC LIMIT 1')).first();return r?{id:r.id,status:r.status,error:r.error,source:JSON.parse(r.state).source||'all',progress:JSON.parse(r.state).progress||JSON.parse(r.state).phase}:null;}
+export async function jobStatuses(){const rows=await database().prepare("SELECT id FROM jobs WHERE status='running' ORDER BY updated_at DESC LIMIT 5").all();return Promise.all(rows.results.map((r:any)=>jobStatus(r.id)));}
+export async function start(source='all'){
+ if(!['all','ekcm','ilpoom'].includes(source))throw Error('수집할 판매처를 확인하세요.');
+ const db=database(),condition="status='running' AND (coalesce(json_extract(state,'$.source'),'all') IN (?,'all') OR ?='all')";
+ const running=await db.prepare('SELECT id FROM jobs WHERE '+condition+' LIMIT 1').bind(source,source).first();if(running)return jobStatus(running.id);
+ const id='collect-'+crypto.randomUUID();
+ await db.prepare("INSERT INTO jobs(id,state,status,updated_at) SELECT ?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM jobs WHERE "+condition+')').bind(id,JSON.stringify({phase:source==='all'?'ekcm':source,source,init:false,pages:0}),'running',now(),source,source).run();
+ return await jobStatus(id)||jobStatus();
+}
 export async function step(id:string){
  const db=database(),lease=Date.now()+60000;
- const r=await db.prepare("UPDATE jobs SET lease_until=? WHERE id=? AND status='running' AND lease_until<? RETURNING *").bind(lease,id,Date.now()).first();if(!r)return jobStatus();
- const job={id,state:JSON.parse(r.state)};let error=null,status='running',deadline=Date.now()+18000;
- try {for(let i=0;i<10&&Date.now()<deadline;i++){await advance(job);await db.prepare('UPDATE jobs SET state=?,updated_at=? WHERE id=?').bind(JSON.stringify(job.state),now(),id).run();if(job.state.phase==='done'){status='done';break;}await new Promise(r=>setTimeout(r,100));}}
- catch(e:any){const retry=(job.state.retries||0)+1;job.state.retries=retry;if(retry>=3||!(/HTTP (429|5\d\d)|fetch failed|Timeout/.test(e.message))){error=e.message;status='error';}else job.state.progress='원본 서버 일시 오류 · 재시도 '+retry+'/3';}
- await db.prepare('UPDATE jobs SET state=?,status=?,error=?,lease_until=0,updated_at=? WHERE id=?').bind(JSON.stringify(job.state),status,error,now(),id).run();if(status==='done')await db.prepare('DELETE FROM job_seen WHERE job=?').bind(id).run();return jobStatus();
+ const r=await db.prepare("UPDATE jobs SET lease_until=? WHERE id=? AND status='running' AND lease_until<? RETURNING *").bind(lease,id,Date.now()).first();if(!r)return jobStatus(id);
+ const job={id,state:JSON.parse(r.state)};job.state.source||='all';let error=null,status='running',deadline=Date.now()+18000;
+ try {for(let i=0;i<10&&Date.now()<deadline;i++){await advance(job);job.state.retries=0;await db.prepare('UPDATE jobs SET state=?,updated_at=? WHERE id=?').bind(JSON.stringify(job.state),now(),id).run();if(job.state.phase==='done'){status='done';break;}await new Promise(r=>setTimeout(r,100));}}
+ catch(e:any){const retry=(job.state.retries||0)+1;job.state.retries=retry;if(retry>=3||!(/HTTP (429|5\d\d)|fetch failed|timeout|Timeout/.test(e.message))){error=e.message;status='error';}else job.state.progress='원본 서버 일시 오류 · 재시도 '+retry+'/3';}
+ await db.prepare('UPDATE jobs SET state=?,status=?,error=?,lease_until=0,updated_at=? WHERE id=?').bind(JSON.stringify(job.state),status,error,now(),id).run();if(status==='done')await db.prepare('DELETE FROM job_seen WHERE job=?').bind(id).run();return jobStatus(id);
 }

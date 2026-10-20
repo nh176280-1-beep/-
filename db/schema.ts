@@ -5,3 +5,6 @@ export const config=sqliteTable('config',{key:text('key').primaryKey(),value:tex
 export const favorites=sqliteTable('favorites',{user:text('user_id').notNull(),source:text('source').notNull(),product:text('product_id').notNull()},t=>[primaryKey({columns:[t.user,t.source,t.product]})]);
 export const jobs=sqliteTable('jobs',{id:text('id').primaryKey(),state:text('state').notNull(),status:text('status').notNull(),error:text('error'),leaseUntil:integer('lease_until').notNull().default(0),updatedAt:text('updated_at').notNull()});
 export const seen=sqliteTable('job_seen',{job:text('job').notNull(),shard:text('shard').notNull(),product:text('product').notNull()},t=>[primaryKey({columns:[t.job,t.shard,t.product]})]);
+export const liveCache=sqliteTable('live_cache',{key:text('key').primaryKey(),payload:text('payload'),checkedAt:text('checked_at'),leaseUntil:integer('lease_until').notNull().default(0)});
+export const requestLimits=sqliteTable('request_limits',{key:text('key').primaryKey(),window:integer('window').notNull(),count:integer('count').notNull()});
+export const audit=sqliteTable('query_audit',{id:text('id').primaryKey(),actor:text('actor').notNull(),kind:text('kind').notNull(),query:text('query').notNull(),result:text('result').notNull(),at:text('at').notNull()});

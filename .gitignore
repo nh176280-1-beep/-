@@ -7,9 +7,9 @@ dist/
 
 .next/
 *.tsbuildinfo
-# Retired local app state and generated verification output
-data/
+*.log
 test-results/
 playwright-report/
-.env
-*.log
+
+# Retired PC app state
+data/

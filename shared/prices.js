@@ -45,7 +45,7 @@ export function parsePrices(html, source, pageUrl) {
       const totalPrice = totalBlock ? priceNumber($(totalBlock).find('.nuM, .num').first().text()) : null;
       let itemUrl;
       try { itemUrl = validateUrl(new URL(link.attr('href'), pageUrl).href, source); } catch { return; }
-      add({ name, price: priceNumber(match[1]), unit: '1kg', grade: name.match(/\/(1\+\+(?:\(\d+\))?|1\+|[123])\[/)?.[1] || '', lotWeight: `${match[2]}kg`, totalPrice, url: itemUrl,
+      add({ goodsNo:new URL(itemUrl).searchParams.get('no'),gradeBasis:'원본 상품명 등급 표기',name, price: priceNumber(match[1]), unit: '1kg', grade: name.match(/\/(1\+\+(?:\(\d+\))?|1\+|[123])\[/)?.[1] || '', lotWeight: `${match[2]}kg`, totalPrice, url: itemUrl,
         availability: /품절/.test(card.find('.goods_soldout, .soldout, .soldout_layer').text()) ? '품절' : '', method: '일품한우 공개 상품 카드' });
     });
   }

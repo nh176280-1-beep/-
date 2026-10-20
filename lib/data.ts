@@ -1,6 +1,7 @@
 import {env} from 'cloudflare:workers';
 import {getChatGPTUser} from '../app/chatgpt-auth';
 import {chunks,seedSources} from './seed';
+import {describe,PARTS} from '../shared/conditions';
 export const database=():any=>{const db=(env as any).DB;if(!db)throw new Error('영구 저장소 연결을 확인하고 있습니다.');return db;};
 export async function identity(request?:Request){
  const person=await getChatGPTUser();
@@ -40,14 +41,23 @@ export async function bootstrap(){
 }
 export async function sourceStates(){const db=database();const r=await db.prepare('SELECT * FROM sources').all();return r.results.map((s:any)=>({...s,count:JSON.parse(s.coverage).priceCount,coverage:JSON.parse(s.coverage),name:s.id==='ekcm'?'금천미트':'일품한우'}));}
 export async function listing(user:any,url:URL){
- const db=database();const source=url.searchParams.get('source')||'all',q=(url.searchParams.get('q')||'').trim().slice(0,200),page=Math.max(1,Number(url.searchParams.get('page')||1)||1),favorites=url.searchParams.get('favorites')==='1';
- const where=['p.generation=s.generation'],values:any[]=[];
+ const db=database();const source=url.searchParams.get('source')||'all',q=(url.searchParams.get('q')||'').trim().slice(0,200),page=Math.min(10000,Math.max(1,Math.floor(Number(url.searchParams.get('page')||1)||1))),favorites=url.searchParams.get('favorites')==='1';
+ const where=[favorites?"(p.generation='live' OR (p.generation=s.generation AND NOT EXISTS(SELECT 1 FROM products l WHERE l.generation='live' AND l.source=p.source AND l.id=p.id)))":'p.generation=s.generation'],values:any[]=[];
  if(source!=='all'){where.push('p.source=?');values.push(source);}
- if(q){where.push("p.search LIKE ? ESCAPE '\\'");values.push('%'+q.toLowerCase().replace(/[\\%_]/g,'\\$&')+'%');}
+ for(const term of q.split(/\s+/).filter(Boolean)){where.push("p.search LIKE ? ESCAPE '\\'");values.push('%'+term.toLowerCase().replace(/[\\%_]/g,'\\$&')+'%');}
+ const part=url.searchParams.get('part'),grade=url.searchParams.get('grade'),storage=url.searchParams.get('storage'),species=url.searchParams.get('species');
+ if(part&&PARTS.includes(part)){
+  const parts=[...PARTS].sort((a,b)=>b.length-a.length);
+  where.push('(CASE '+parts.map(()=>"WHEN instr(p.name,?)>0 THEN ?").join(' ')+" ELSE '' END)=?");
+  for(const x of parts)values.push(x,x);values.push(part);
+ }
+ if(grade&&['1++','1+','1','2','3'].includes(grade)){where.push("(json_extract(p.data,'$.grade')=? OR json_extract(p.data,'$.grade') LIKE ?)");values.push(grade,grade+'(%');}
+ if(storage&&['냉장','냉동'].includes(storage)){where.push('instr(p.name,?)>0 AND instr(p.name,?)=0');values.push(storage,storage==='냉장'?'냉동':'냉장');}
+ if(species&&['한우','육우','수입우','돼지'].includes(species)){where.push("instr(p.name||' '||coalesce(json_extract(p.data,'$.classificationText'),''),?)>0");values.push(species);}
  if(favorites){where.push('EXISTS(SELECT 1 FROM favorites f WHERE f.user_id=? AND f.source=p.source AND f.product_id=p.id)');values.push(user.id);}
  const clause=where.join(' AND '),join=' FROM products p JOIN sources s ON s.id=p.source ';
  const total=await db.prepare('SELECT count(*) AS n'+join+'WHERE '+clause).bind(...values).first();
  const rows=await db.prepare('SELECT p.data,EXISTS(SELECT 1 FROM favorites f WHERE f.user_id=? AND f.source=p.source AND f.product_id=p.id) AS favorite'+join+'WHERE '+clause+' ORDER BY p.name,p.id LIMIT 100 OFFSET ?').bind(user.id,...values,(page-1)*100).all();
  const favoriteCount=await db.prepare('SELECT count(*) AS n FROM favorites WHERE user_id=?').bind(user.id).first();
- return {items:rows.results.map((r:any)=>({...JSON.parse(r.data),favorite:!!r.favorite})),total:total.n,page,pageCount:Math.max(1,Math.ceil(total.n/100)),favoriteCount:favoriteCount.n,sources:await sourceStates()};
+ return {items:rows.results.map((r:any)=>({...describe(JSON.parse(r.data)),favorite:!!r.favorite})),total:total.n,page,pageCount:Math.max(1,Math.ceil(total.n/100)),favoriteCount:favoriteCount.n,sources:await sourceStates()};
 }

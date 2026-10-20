@@ -1,0 +1,50 @@
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+import {DatabaseSync} from 'node:sqlite';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+import * as conditions from '../shared/conditions.js';
+import * as adapters from '../shared/live-source.js';
+const require=createRequire(import.meta.url),sqlite=new DatabaseSync(':memory:');
+for(const file of ['drizzle/0000_sweet_sister_grimm.sql','drizzle/0001_fantastic_wild_child.sql'])sqlite.exec(readFileSync(file,'utf8'));
+const db={prepare(sql){let values=[];return {bind(...v){values=v;return this},async first(){return sqlite.prepare(sql).get(...values)||null},async all(){return {results:sqlite.prepare(sql).all(...values)}},async run(){return sqlite.prepare(sql).run(...values)}}}};
+const compile=(path,deps={},globals={})=>{const context={exports:{},require:name=>name in deps?deps[name]:require(name),console,crypto:globalThis.crypto,URL,URLSearchParams,Date,JSON,Number,Math,Set,Map,Promise,setTimeout,Response,Request,...globals};vm.createContext(context);vm.runInContext(ts.transpileModule(readFileSync(path,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,context);return context.exports;};
+const data=compile('lib/data.ts',{'cloudflare:workers':{env:{DB:db}},'../app/chatgpt-auth':{getChatGPTUser:async()=>null},'./seed':{chunks:[],seedSources:{}},'../shared/conditions':conditions});
+const base={id:'01234567890123456789',name:'한우등심/거세/1+[냉장]',sourceId:'ilpoom',sourceName:'일품한우',grade:'1+',unit:'1kg',price:50000,url:'https://www.ilpoomhanwoo.com/goods/view?no=123',lotWeight:'5kg',totalPrice:250000};
+for(const source of ['ekcm','ilpoom'])await db.prepare('INSERT INTO sources VALUES(?,?,?,?,?,?)').bind(source,'seed','ok',JSON.stringify({priceCount:1}),'2026-10-19T00:00:00Z','test').run();
+await data.insertItems(db,'seed','ilpoom',[base]);
+let calls={ekcm:0,ilpoom:0},fail=new Set();
+const live=compile('lib/live.ts',{'./data':data,'../shared/conditions':conditions,'../shared/live-source':{...adapters,searchSource:async(id,c)=>{calls[id]++;await new Promise(r=>setTimeout(r,5));if(fail.has(id))throw Error('HTTP 503');return {sourceId:id,name:id,status:'live',checkedAt:new Date().toISOString(),items:[{...base,id:id==='ekcm'?'abcdef01234567890123':'abcdef01234567890124',sourceId:id,price:id==='ekcm'?51000:50000,checkedAt:new Date().toISOString()}],hasMore:false,page:1};}}});
+const user={id:'guest:test'},query={part:'등심',grade:'1+',storage:'냉장',species:'한우'};
+let [first,other]=await Promise.all([live.liveSearch(user,query),live.liveSearch({id:'guest:other'},query)]);
+assert.equal(first.items.length,2);assert.equal(calls.ekcm,1);assert.equal(calls.ilpoom,1);assert.equal(first.groups.length,1);
+let next=await live.liveSearch(user,query);assert(next.sources.every(s=>s.status==='cached'));assert.equal(calls.ekcm,1);
+// Fail one source after the reuse window: retain the previous successful payload and its timestamp.
+sqlite.exec("UPDATE live_cache SET checked_at='2000-01-01T00:00:00Z'");fail.add('ekcm');
+next=await live.liveSearch(user,query);assert.equal(next.sources[0].status,'stale');assert.equal(next.sources[0].checkedAt,first.sources[0].checkedAt);assert.equal(next.sources[1].status,'live');
+// A never-seen query falls back to the stored snapshot, with explicit stale/snapshot status.
+fail.add('ilpoom');next=await live.liveSearch(user,{...query,q:'한우'});assert.equal(next.sources[1].status,'snapshot');assert.equal(next.sources[1].items[0].price,50000);
+// Live-only products remain visible in favorites, even when absent from the full snapshot.
+await db.prepare('INSERT INTO favorites VALUES(?,?,?)').bind(user.id,'ekcm','abcdef01234567890123').run();
+const favorites=await data.listing(user,new URL('https://local/api/prices?favorites=1'));assert.equal(favorites.total,1);assert.equal(favorites.items[0].sourceId,'ekcm');
+const filtered=await data.listing(user,new URL('https://local/api/prices?source=ilpoom&part=등심&grade=1%2B&storage=냉장&species=한우&q=한우%20등심'));assert.equal(filtered.total,1);
+assert(!conditions.matches({...base,grade:'1++(9)'},query));assert(!conditions.matches({...base,name:'한우꽃등심/거세/1+[냉장]'},query));
+assert.equal(conditions.describe({name:'냉장 냉동 혼합'}).storage,'');
+const groups=conditions.comparableGroups([{...base,grade:'1++(7)'},{...base,grade:'1++(9)'}]);assert.equal(groups.length,2);
+const detail=adapters.parseDetail('<ul class="detail_spec_table"><li class="th">생산일자</li><li class="td">2026-10-08</li></ul><ul class="detail_spec_table"><li class="th">유통기한</li><li class="td">2026-12-06</li></ul>','ilpoom');assert.equal(detail.productionDate,'2026-10-08');assert.equal(detail.expiryDate,'2026-12-06');assert.equal(detail.priceVerified,false);
+assert.equal(adapters.parseDetail('<p>페이지 작성일 2026-10-20</p>','ekcm').productionDate,'');
+assert.throws(()=>adapters.detailURL('ilpoom','https://evil.test'));assert.throws(()=>adapters.detailURL('other','123'));
+// Independent source jobs cannot accidentally return a different job's status.
+const collect=compile('lib/collect.ts',{'cheerio/slim':require('cheerio/slim'),'robots-parser':require('robots-parser'),'./data':data,'../shared/prices':{},'../shared/ekcm':{} });
+const a=await collect.start('ekcm'),b=await collect.start('ilpoom');assert.notEqual(a.id,b.id);assert.equal((await collect.start('ekcm')).id,a.id);assert.equal((await collect.jobStatus(a.id)).source,'ekcm');
+await assert.rejects(()=>live.limit('test-limit',0),/요청이 많습니다/);
+assert(sqlite.prepare('SELECT count(*) AS n FROM query_audit').get().n>=4);
+const routes=compile('app/api/[...path]/route.ts',{'../../../lib/data':data,'../../../lib/collect':collect,'../../../lib/live':live});
+let response=await routes.POST(new Request('https://site.test/api/refresh',{method:'POST',body:'{}'}));assert.equal(response.status,403);
+response=await routes.POST(new Request('https://site.test/api/live',{method:'POST',headers:{origin:'https://evil.test'},body:'{}'}));assert.equal(response.status,403);
+response=await routes.POST(new Request('https://site.test/api/live',{method:'POST',body:'x'.repeat(17000)}));assert.equal(response.status,413);
+response=await routes.POST(new Request('https://site.test/api/favorite',{method:'POST',body:JSON.stringify({source:'ilpoom',id:'ffffffffffffffffffff',saved:true})}));assert.equal(response.status,400);
+response=await routes.GET(new Request('https://site.test/api/me'));assert.equal(response.status,200);assert(response.headers.get('set-cookie').includes('HttpOnly'));assert.equal((await response.json()).user.role,'viewer');
+console.log('PASS: live/cache/stale/snapshot states, timestamp preservation, single-flight, per-source failure isolation, SQL filters, live favorites, exact grades/parts, detail dates, URL validation, independent collection jobs, audit and limits');
+sqlite.close();
