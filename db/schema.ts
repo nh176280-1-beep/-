@@ -1,0 +1,7 @@
+import {sqliteTable,text,integer,primaryKey,index} from 'drizzle-orm/sqlite-core';
+export const products=sqliteTable('products',{generation:text('generation').notNull(),source:text('source').notNull(),id:text('id').notNull(),name:text('name').notNull(),search:text('search').notNull(),data:text('data').notNull() },t=>[primaryKey({columns:[t.generation,t.source,t.id]}),index('product_listing').on(t.generation,t.source,t.name)]);
+export const sources=sqliteTable('sources',{id:text('id').primaryKey(),generation:text('generation').notNull(),status:text('status').notNull(),coverage:text('coverage').notNull(),checkedAt:text('checked_at').notNull(),message:text('message').notNull()});
+export const config=sqliteTable('config',{key:text('key').primaryKey(),value:text('value').notNull()});
+export const favorites=sqliteTable('favorites',{user:text('user_id').notNull(),source:text('source').notNull(),product:text('product_id').notNull()},t=>[primaryKey({columns:[t.user,t.source,t.product]})]);
+export const jobs=sqliteTable('jobs',{id:text('id').primaryKey(),state:text('state').notNull(),status:text('status').notNull(),error:text('error'),leaseUntil:integer('lease_until').notNull().default(0),updatedAt:text('updated_at').notNull()});
+export const seen=sqliteTable('job_seen',{job:text('job').notNull(),shard:text('shard').notNull(),product:text('product').notNull()},t=>[primaryKey({columns:[t.job,t.shard,t.product]})]);

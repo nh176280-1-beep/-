@@ -1,6 +1,15 @@
 node_modules/
+dist/
+.sites-runtime/
+.wrangler/
+.vinext/
+.env*
+
+.next/
+*.tsbuildinfo
+# Retired local app state and generated verification output
 data/
-.env
 test-results/
 playwright-report/
-startup-error.log
+.env
+*.log
